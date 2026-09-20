@@ -1,0 +1,31 @@
+*{box-sizing:border-box}html,body{margin:0;background:#f6f6f6;color:#111;font-family:Inter,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 16px 80px}
+.av{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 0 28px}
+.av .logo{font-weight:700;font-size:18px;color:#111;text-decoration:none;letter-spacing:-.01em}
+.av .links{display:flex;gap:8px;flex-wrap:wrap}
+.av .links a{border:1px solid #111;border-radius:999px;padding:8px 14px;font-size:13px;color:#111;text-decoration:none;background:#fff}
+.av .links a:hover{background:#111;color:#fff}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px 24px;margin-bottom:18px}
+h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:0}
+.sub{color:#666;font-size:14px}
+p.intro{max-width:640px;color:#333;font-size:15px;line-height:1.45;margin:8px 0 18px}
+#years{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 20px}
+#years button{border:1px solid #ddd;background:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+#years button.on{background:#111;color:#fff;border-color:#111}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.cell{display:block;position:relative;background:#fff;aspect-ratio:1;overflow:hidden;border:1px solid #eee}
+.cell img{width:100%;height:100%;object-fit:contain;display:block}
+.cell span{position:absolute;left:6px;bottom:4px;font-size:11px;color:#999}
+#lightbox{position:fixed;inset:0;background:rgba(246,246,246,.96);display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:9}
+#lightbox.open{display:flex}
+#lightbox img{max-width:min(96vw,1200px);max-height:80vh;width:auto!important;height:auto!important;image-rendering:auto;background:#fff;border:1px solid #e5e5e5}
+#lightbox .cap{font-size:13px;color:#555}
+#lightbox .x{position:fixed;top:14px;right:18px;font-size:28px;cursor:pointer;color:#333}
+#lightbox .prev,#lightbox .next{position:fixed;top:50%;transform:translateY(-50%);font-size:34px;cursor:pointer;color:#333;padding:20px;user-select:none}
+#lightbox .prev{left:6px}#lightbox .next{right:6px}
+.brands{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:24px}
+.brands a{display:block;background:#fff;border:1px solid #e8e8e8;padding:18px;color:#111;text-decoration:none}
+.brands a b{display:block;font-size:20px;margin-bottom:4px}.brands a span{color:#666;font-size:13px}
+footer{margin-top:40px;color:#888;font-size:12px;line-height:1.5}
+footer a{color:#111}
+@media (max-width:600px){#grid{grid-template-columns:repeat(3,1fr);gap:4px}h1{font-size:22px}}
