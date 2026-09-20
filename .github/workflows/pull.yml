@@ -1,0 +1,112 @@
+name: Pull from Wayback
+on:
+  workflow_dispatch:
+    inputs:
+      list:
+        description: list file under lists/
+        default: supreme-2000.tsv
+      brand:
+        description: brand slug (folder under archive/)
+        default: supreme
+      chunks:
+        description: number of parallel jobs
+        default: "8"
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        run: |
+          n=${{ github.event.inputs.chunks }}
+          echo "matrix=$(python3 -c "import json;print(json.dumps(list(range($n))))")" >> $GITHUB_OUTPUT
+  pull:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install pillow
+      - name: download chunk
+        env:
+          CHUNK: ${{ matrix.chunk }}
+          CHUNKS: ${{ github.event.inputs.chunks }}
+          LIST: lists/${{ github.event.inputs.list }}
+          BRAND: ${{ github.event.inputs.brand }}
+        run: |
+          python3 - <<'PY'
+          import os,subprocess,time,concurrent.futures as cf,re
+          from PIL import Image
+          chunk=int(os.environ['CHUNK']); chunks=int(os.environ['CHUNKS']); brand=os.environ['BRAND']
+          rows=[l.rstrip('\n').split('\t') for l in open(os.environ['LIST']) if l.strip()]
+          rows=[r for i,r in enumerate(rows) if i%chunks==chunk]
+          out=f'out/archive/{brand}'; os.makedirs(out+'/thumb',exist_ok=True)
+          def get(r):
+              ts,u,name=r[0],r[1],re.sub(r'[^A-Za-z0-9._-]','_',r[2]); tmp='/tmp/'+name
+              if os.path.exists(f'{out}/{name}'): return 'skip'
+              for t in range(6):
+                  rc=subprocess.run(['curl','-sL','--max-time','120','-o',tmp,f'https://web.archive.org/web/{ts}id_/{u}'],capture_output=True).returncode
+                  if rc==0 and os.path.exists(tmp) and os.path.getsize(tmp)>1000 and open(tmp,'rb').read(3)==b'\xff\xd8\xff':
+                      try:
+                          im=Image.open(tmp).convert('RGB'); w,h=im.size
+                          if w<500 or h<500: os.remove(tmp); return 'small'
+                          s=im.copy(); s.thumbnail((1000,1000)); s.save(f'{out}/{name}',quality=85,optimize=True)
+                          th=im.copy(); th.thumbnail((300,300)); th.save(f'{out}/thumb/{name}',quality=80)
+                          os.remove(tmp); return 'ok'
+                      except Exception: pass
+                  if os.path.exists(tmp): os.remove(tmp)
+                  time.sleep(5*(t+1))
+              return 'fail'
+          res=[]
+          with cf.ThreadPoolExecutor(3) as ex:
+              for r in ex.map(get,rows): res.append(r)
+          from collections import Counter; print(len(rows), Counter(res))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chunk-${{ matrix.chunk }}
+          path: out
+          if-no-files-found: ignore
+  assemble:
+    needs: pull
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: parts
+      - run: pip install pillow
+      - name: merge and build manifest
+        env:
+          BRAND: ${{ github.event.inputs.brand }}
+        run: |
+          set -e
+          b=$BRAND
+          mkdir -p archive/$b/thumb
+          for d in parts/chunk-*/archive/$b; do [ -d "$d" ] && cp -n "$d"/*.jpg archive/$b/ 2>/dev/null || true; cp -n "$d"/thumb/*.jpg archive/$b/thumb/ 2>/dev/null || true; done
+          python3 - <<'PY'
+          import os,re,json
+          from PIL import Image
+          b=os.environ['BRAND']; d=f'archive/{b}'; man=[]
+          for f in sorted(os.listdir(d)):
+              if not f.endswith('.jpg'): continue
+              try: w,h=Image.open(os.path.join(d,f)).size
+              except Exception: continue
+              m=re.match(r'(\d{4})_(?:old_)?([^_]+)',f)
+              man.append({'src':f,'w':w,'h':h,'year':int(m.group(1)) if m else 0,'id':m.group(2) if m else f})
+          years=sorted(set(x['year'] for x in man if x['year']))
+          names={'supreme':'Supreme'}
+          json.dump({'brand':names.get(b,b),'slug':b,'count':len(man),'years':years,'items':man},open(f'{d}/manifest.json','w'))
+          print(len(man),years)
+          PY
+          git config user.name "archive-bot"; git config user.email "archive-bot@users.noreply.github.com"
+          git add archive/$b
+          git commit -m "Wayback pull: $b" || echo "nothing new"
+          git pull --rebase origin main || true
+          git push
