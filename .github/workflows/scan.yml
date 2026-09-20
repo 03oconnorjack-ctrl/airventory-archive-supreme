@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 2
       matrix:
         domain: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
@@ -29,10 +29,10 @@ jobs:
           DOM: ${{ matrix.domain }}
         run: |
           mkdir -p out
-          for try in 1 2 3 4; do
+          for try in 1 2 3 4 5 6; do
             curl -s --max-time 240 "https://web.archive.org/cdx/search/cdx?url=$DOM/*&filter=statuscode:200&filter=mimetype:image/jpeg&from=1996&to=2012&collapse=urlkey&fl=timestamp,original,length&limit=300000" > out/raw.txt
             [ -s out/raw.txt ] && ! grep -q "<html" out/raw.txt && break
-            sleep $((try*20))
+            sleep $((try*45))
           done
           python3 - <<'PY'
           import os,re,collections
