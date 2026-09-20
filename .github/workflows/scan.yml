@@ -1,0 +1,61 @@
+name: Scan Wayback for brand catalogues
+on:
+  workflow_dispatch:
+    inputs:
+      domains:
+        description: comma-separated domains
+        default: stussy.com
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        run: echo "matrix=$(python3 -c "import json,os;print(json.dumps([d.strip() for d in os.environ['D'].split(',') if d.strip()]))")" >> $GITHUB_OUTPUT
+        env:
+          D: ${{ github.event.inputs.domains }}
+  scan:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        domain: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - name: scan ${{ matrix.domain }}
+        env:
+          DOM: ${{ matrix.domain }}
+        run: |
+          mkdir -p out
+          for try in 1 2 3 4; do
+            curl -s --max-time 240 "https://web.archive.org/cdx/search/cdx?url=$DOM/*&filter=statuscode:200&filter=mimetype:image/jpeg&from=1996&to=2012&collapse=urlkey&fl=timestamp,original,length&limit=300000" > out/raw.txt
+            [ -s out/raw.txt ] && ! grep -q "<html" out/raw.txt && break
+            sleep $((try*20))
+          done
+          python3 - <<'PY'
+          import os,re,collections
+          dom=os.environ['DOM']; rows=[l.split() for l in open('out/raw.txt') if len(l.split())==3 and l.split()[2].isdigit()]
+          big=[r for r in rows if int(r[2])>15000]
+          prod=[r for r in big if re.search(r'product|catalog|item|shop|store|prod|sku|/p/|images/[a-z0-9_]*\d{4,}|zoom|large|detail',r[1],re.I)]
+          yrs=collections.Counter(r[0][:4] for r in prod)
+          paths=collections.Counter('/'.join(re.sub(r'https?://[^/]+','',r[1]).split('/')[1:3]) for r in prod).most_common(3)
+          line=f"{len(prod)}\t{len(big)}\t{len(rows)}\t{dom}\t{' '.join(f'{y}:{n}' for y,n in sorted(yrs.items()))}\t{paths}"
+          print(line); open('out/result.tsv','w').write(line+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scan-${{ matrix.domain }}
+          path: out/result.tsv
+  report:
+    needs: scan
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: parts
+      - run: |
+          echo "product_imgs	imgs_over_15KB	all_jpegs	domain	years	top_paths"
+          cat parts/*/result.tsv | sort -rn
